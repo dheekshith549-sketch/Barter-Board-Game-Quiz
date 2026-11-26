@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Evolution of Money: 2P Speed Quiz</title>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    :root {
+      --bg: #f6efe2;
+      --card: #fffdf9;
+      --ink: #2b2118;
+      --accent: #c86d2d;
+      --accent-dark: #9c4f19;
+      --green: #2e7d32;
+      --red: #c62828;
+      --border: #d9c7ad;
+    }
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    body {
+      margin: 0; padding: 16px; background: var(--bg); color: var(--ink);
+      display: flex; justify-content: center; min-height: 100vh;
+    }
+    .app {
+      width: 100%; max-width: 520px; background: var(--card);
+      border: 2px solid var(--border); border-radius: 16px; padding: 20px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+    }
+    h1 { font-size: 1.35rem; margin: 0 0 6px; text-align: center; color: var(--accent-dark); }
+    .sub { text-align: center; font-size: 0.88rem; color: #665544; margin-bottom: 18px; }
+    .hidden { display: none !important; }
+    button {
+      width: 100%; padding: 13px; border: none; border-radius: 10px;
+      background: var(--accent); color: #fff; font-size: 1rem; font-weight: 600;
+      cursor: pointer; margin-top: 8px;
+    }
+    button:hover { background: var(--accent-dark); }
+    button.secondary { background: #5d4a3a; }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    input {
+      width: 100%; padding: 12px; border: 2px solid var(--border);
+      border-radius: 10px; font-size: 1rem; text-transform: uppercase;
+      text-align: center; letter-spacing: 3px; font-weight: 700;
+    }
+    .qr-box {
+      display: flex; flex-direction: column; align-items: center;
+      background: #fff; padding: 16px; border-radius: 12px;
+      border: 1px dashed var(--border); margin: 14px 0;
+    }
+    .room-code {
+      font-size: 1.6rem; font-weight: 800; letter-spacing: 4px;
+      color: var(--accent-dark); margin-top: 10px;
+    }
+    .scoreboard {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px;
+    }
+    .player-card {
+      padding: 10px; border-radius: 10px; border: 2px solid var(--border);
+      text-align: center; background: #faf4ea;
+    }
+    .player-card.active { border-color: var(--accent); background: #fff3e0; }
+    .timer-bar {
+      display: flex; justify-content: space-between; align-items: center;
+      background: #eee3d0; padding: 10px 14px; border-radius: 10px;
+      font-weight: 700; margin-bottom: 14px;
+    }
+    .badge {
+      padding: 4px 10px; border-radius: 999px; font-size: 0.82rem;
+      background: var(--accent); color: #fff;
+    }
+    .question { font-size: 1.1rem; font-weight: 700; margin-bottom: 14px; line-height: 1.4; }
+    .opt-btn {
+      background: #f5ece0; color: var(--ink); border: 2px solid var(--border);
+      text-align: left; font-weight: 500; margin-top: 8px;
+    }
+    .opt-btn:hover:not(:disabled) { background: #ead9c3; }
+    .result-box {
+      padding: 16px; border-radius: 12px; text-align: center; margin-top: 12px;
+      border: 2px solid var(--border); background: #faf4ea;
+    }
+    .moves-big { font-size: 1.8rem; font-weight: 800; margin: 6px 0; }
+    .rules {
+      font-size: 0.8rem; background: #f8f2e7; padding: 10px; border-radius: 8px;
+      margin-top: 14px; color: #5b4938; line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <h1>Evolution of Money</h1>
+  <div class="sub">From Barter to Bitcoin — 2-Player Board Quiz</div>
+
+  <!-- LOBBY -->
+  <div id="lobbyView">
+    <button id="createBtn">Create 2-Player Room (Host)</button>
+    <div style="text-align:center; margin: 12px 0; font-weight:600; color:#776;">— OR —</div>
+    <input id="joinInput" maxlength="4" placeholder="ENTER 4-LETTER CODE" />
+    <button id="joinBtn" class="secondary">Join Room</button>
+
+    <div id="hostWait" class="hidden">
+      <div class="qr-box">
+        <div id="qrcode"></div>
+        <div class="room-code" id="roomCodeText">----</div>
+        <small style="color:#665544; margin-top:4px;">Player 2: Scan QR or enter code</small>
+      </div>
+      <div id="statusText" style="text-align:center; font-weight:600;">Waiting for Player 2 to connect...</div>
+    </div>
+
+    <div class="rules">
+      <strong>Speed Movement Rules:</strong><br>
+      ⚡ Under 5s = <b>4 spaces</b> &nbsp;|&nbsp; ⏱️ 5–10s = <b>3 spaces</b><br>
+      🐢 10–15s = <b>2 spaces</b> &nbsp;|&nbsp; 🕰️ Over 15s = <b>1 space</b>
+    </div>
+  </div>
+
+  <!-- GAME -->
+  <div id="gameView" class="hidden">
+    <div class="scoreboard">
+      <div class="player-card" id="p1Card">
+        <div><strong>Player 1 (Host)</strong></div>
+        <div>Board Space: <span id="p1Pos">0</span></div>
+      </div>
+      <div class="player-card" id="p2Card">
+        <div><strong>Player 2 (Guest)</strong></div>
+        <div>Board Space: <span id="p2Pos">0</span></div>
+      </div>
+    </div>
+
+    <div id="turnBanner" style="text-align:center; font-weight:800; margin-bottom:10px; color:var(--accent-dark);"></div>
+
+    <div id="questionArea">
+      <div class="timer-bar">
+        <span>Time: <span id="timerVal">0.0</span>s</span>
+        <span class="badge" id="potentialBadge">Reward: 4 spaces</span>
+      </div>
+      <div class="question" id="qText"></div>
+      <div id="optionsList"></div>
+    </div>
+
+    <div id="feedbackArea" class="result-box hidden">
+      <div id="feedbackTitle" style="font-weight:700;"></div>
+      <div class="moves-big" id="movesEarned"></div>
+      <div id="feedbackSub" style="font-size:0.9rem; color:#554433;"></div>
+      <button id="nextTurnBtn" class="hidden">Next Player's Turn →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const QUESTIONS = [
+  { q: "What is the biggest problem with the Barter System?", opts: ["Coins are too heavy", "Double coincidence of wants", "Internet failure", "Paper tears easily"], a: 1 },
+  { q: "Which items were commonly used as commodity money in early Barter Villages?", opts: ["Plastic cards", "Grain, cattle & shells", "QR codes", "Paper cheques"], a: 1 },
+  { q: "Why did societies switch from barter to metal coins?", opts: ["Metals were durable & divisible", "Metals grew on trees", "Paper wasn't invented yet", "To use ATMs"], a: 0 },
+  { q: "Early coins got their value mainly from:", opts: ["The king's signature", "The precious metal inside (gold/silver)", "Serial numbers", "Bank apps"], a: 1 },
+  { q: "Why was paper money introduced instead of carrying lots of coins?", opts: ["Paper is lighter for large trade", "Gold stopped existing", "Coins were illegal", "Paper lasts longer in rain"], a: 0 },
+  { q: "What role does a Bank play in the evolution of money?", opts: ["Grows crops for barter", "Safely stores money & issues credit", "Mines Bitcoin physically", "Prints board games"], a: 1 },
+  { q: "How do Debit Cards work?", opts: ["Borrow money from friends", "Spend money directly from your bank account", "Trade grain digitally", "Work without any bank"], a: 1 },
+  { q: "What does UPI stand for in India?", opts: ["Unified Payments Interface", "Universal Paper India", "United Price Index", "Unique Payment ID"], a: 0 },
+  { q: "What do you scan at a shop to make an instant UPI payment?", opts: ["Barcode on grain", "QR Code", "Gold coin", "Passbook"], a: 1 },
+  { q: "What makes Bitcoin different from regular Rupee notes?", opts: ["It is decentralized digital crypto", "It is made of silver", "It is printed by local banks", "It requires barter"], a: 0 },
+  { q: "What technology records all Bitcoin transactions securely?", opts: ["Blockchain", "Paper ledger", "Passbook printer", "Barter register"], a: 0 },
+  { q: "Arrange the evolution of money in the right order:", opts: ["Coins → Barter → UPI → Paper", "Barter → Coins → Paper/Cards → Digital/Crypto", "Crypto → Paper → Coins → Barter", "Cards → Barter → Coins → UPI"], a: 1 }
+];
+
+let peer = null, conn = null, isHost = false, myPlayer = 1;
+let state = { turn: 1, p1Pos: 0, p2Pos: 0, qIndex: 0 };
+let startTime = 0, timerInterval = null;
+
+const $ = id => document.getElementById(id);
+
+function randomRoomCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  return Array.from({length: 4}, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+}
+
+function getSpacesForSeconds(sec) {
+  if (sec <= 5) return 4;
+  if (sec <= 10) return 3;
+  if (sec <= 15) return 2;
+  return 1;
+}
+
+// Check if opened via QR code (?room=XXXX)
+window.addEventListener("DOMContentLoaded", () => {
+  const params = new URLSearchParams(window.location.search);
+  const roomParam = params.get("room");
+  if (roomParam) {
+    $("joinInput").value = roomParam.toUpperCase();
+    joinRoom(roomParam.toUpperCase());
+  }
+});
+
+$("createBtn").onclick = () => {
+  const code = randomRoomCode();
+  isHost = true;
+  myPlayer = 1;
+  $("createBtn").disabled = true;
+  $("joinBtn").disabled = true;
+  $("hostWait").classList.remove("hidden");
+  $("roomCodeText").textContent = code;
+
+  const joinUrl = `${window.location.origin}${window.location.pathname}?room=${code}`;
+  $("qrcode").innerHTML = "";
+  new QRCode($("qrcode"), { text: joinUrl, width: 170, height: 170 });
+
+  peer = new Peer("money-quiz-" + code);
+  peer.on("connection", (connection) => {
+    conn = connection;
+    setupConnection();
+    conn.on("open", () => {
+      startGame();
+      sendSync();
+    });
+  });
+  peer.on("error", (err) => {
+    $("statusText").textContent = "Error: " + err.type + ". Refresh and try again.";
+  });
+};
+
+$("joinBtn").onclick = () => {
+  const code = $("joinInput").value.trim().toUpperCase();
+  if (code.length !== 4) return alert("Enter the 4-letter room code.");
+  joinRoom(code);
+};
+
+function joinRoom(code) {
+  isHost = false;
+  myPlayer = 2;
+  $("createBtn").disabled = true;
+  $("joinBtn").disabled = true;
+  peer = new Peer();
+  peer.on("open", () => {
+    conn = peer.connect("money-quiz-" + code);
+    setupConnection();
+  });
+  peer.on("error", () => alert("Room not found. Check the code and make sure Host is waiting."));
+}
+
+function setupConnection() {
+  conn.on("data", (msg) => {
+    if (msg.type === "SYNC") {
+      state = msg.state;
+      startGame();
+      renderTurn();
+    } else if (msg.type === "ANSWER_RESULT") {
+      state = msg.state;
+      showResult(msg.correct, msg.elapsed, msg.spaces, msg.who);
+    }
+  });
+}
+
+function sendSync() {
+  if (conn && conn.open) conn.send({ type: "SYNC", state });
+}
+
+function startGame() {
+  $("lobbyView").classList.add("hidden");
+  $("gameView").classList.remove("hidden");
+  renderTurn();
+}
+
+function renderTurn() {
+  clearInterval(timerInterval);
+  $("p1Pos").textContent = state.p1Pos;
+  $("p2Pos").textContent = state.p2Pos;
+  $("p1Card").classList.toggle("active", state.turn === 1);
+  $("p2Card").classList.toggle("active", state.turn === 2);
+  $("feedbackArea").classList.add("hidden");
+
+  const isMyTurn = state.turn === myPlayer;
+  $("turnBanner").textContent = isMyTurn
+    ? `🟢 YOUR TURN (Player ${myPlayer}) — Answer fast!`
+    : `⏳ Waiting for Player ${state.turn} to answer...`;
+
+  if (!isMyTurn) {
+    $("questionArea").classList.add("hidden");
+    return;
+  }
+
+  $("questionArea").classList.remove("hidden");
+  const item = QUESTIONS[state.qIndex % QUESTIONS.length];
+  $("qText").textContent = `Q${state.qIndex + 1}: ${item.q}`;
+  $("optionsList").innerHTML = "";
+
+  item.opts.forEach((opt, idx) => {
+    const btn = document.createElement("button");
+    btn.className = "opt-btn";
+    btn.textContent = opt;
+    btn.onclick = () => submitAnswer(idx === item.a);
+    $("optionsList").appendChild(btn);
+  });
+
+  startTime = performance.now();
+  timerInterval = setInterval(() => {
+    const elapsed = (performance.now() - startTime) / 1000;
+    $("timerVal").textContent = elapsed.toFixed(1);
+    const pot = getSpacesForSeconds(elapsed);
+    $("potentialBadge").textContent = `Reward: ${pot} space${pot > 1 ? "s" : ""}`;
+  }, 100);
+}
+
+function submitAnswer(correct) {
+  clearInterval(timerInterval);
+  const elapsed = (performance.now() - startTime) / 1000;
+  const spaces = correct ? getSpacesForSeconds(elapsed) : 0;
+
+  if (myPlayer === 1) state.p1Pos += spaces;
+  else state.p2Pos += spaces;
+
+  showResult(correct, elapsed, spaces, myPlayer);
+  if (conn && conn.open) {
+    conn.send({ type: "ANSWER_RESULT", state, correct, elapsed, spaces, who: myPlayer });
+  }
+}
+
+function showResult(correct, elapsed, spaces, who) {
+  $("questionArea").classList.add("hidden");
+  $("feedbackArea").classList.remove("hidden");
+  $("p1Pos").textContent = state.p1Pos;
+  $("p2Pos").textContent = state.p2Pos;
+
+  if (correct) {
+    $("feedbackTitle").textContent = `✅ Player ${who} answered right in ${elapsed.toFixed(1)}s!`;
+    $("feedbackTitle").style.color = "var(--green)";
+    $("movesEarned").textContent = `Move ${spaces} Space${spaces > 1 ? "s" : ""}!`;
+    $("feedbackSub").textContent = `Move Player ${who}'s physical token to Space #${who === 1 ? state.p1Pos : state.p2Pos}.`;
+  } else {
+    $("feedbackTitle").textContent = `❌ Player ${who} got it wrong (${elapsed.toFixed(1)}s)`;
+    $("feedbackTitle").style.color = "var(--red)";
+    $("movesEarned").textContent = `Move 0 Spaces`;
+    $("feedbackSub").textContent = `Stay on your current space!`;
+  }
+
+  if (who === myPlayer) {
+    $("nextTurnBtn").classList.remove("hidden");
+    $("nextTurnBtn").onclick = () => {
+      state.turn = state.turn === 1 ? 2 : 1;
+      state.qIndex += 1;
+      sendSync();
+      renderTurn();
+    };
+  } else {
+    $("nextTurnBtn").classList.add("hidden");
+  }
+}
+</script>
+</body>
+</html>
